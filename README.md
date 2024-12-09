@@ -1,3 +1,8 @@
+
+# Notice: fork and use
+
+This fork is for use with multitasking setups.
+
 # MotorNet
 
 This repository contains **MotorNet**, a python package that allows training recurrent neural networks to control for
