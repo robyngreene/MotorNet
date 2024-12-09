@@ -3,6 +3,20 @@
 
 This fork is for use with multitasking setups.
 
+## Environment setup
+
+```
+micromamba create -n motornet_fork python=3.10.15
+micromamba activate motornet_fork 
+micromamba install numpy==1.26.4       
+micromamba install matplotlib==3.9.2 
+micromamba install pytorch==2.5.0 -c pytorch  
+pip install "gymnasium[all]"
+cd path/to/motornet/fork/clone
+pip install -e .
+micromamba install ipykernel
+```
+
 # MotorNet
 
 This repository contains **MotorNet**, a python package that allows training recurrent neural networks to control for

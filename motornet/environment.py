@@ -494,3 +494,412 @@ class RandomTargetReach(Environment):
       "goal": self.goal if self.differentiable else self.detach(self.goal),
       }
     return obs, info
+
+
+
+####################################################################################################
+########################################### CUSTOM TASKS ###########################################
+####################################################################################################
+
+
+
+# helper for envs in general
+# find shoulder and elbow angles for given fingertip location
+def find_shoulder_elbow_angles_for_coord(arm, y, x=None):
+
+    l1 = arm.skeleton.L1
+    l2 = arm.skeleton.L2
+
+    # if x is not (None or 0):
+    #     raise NotImplementedError("Only y coordinate is supported for now.")
+
+    # angles associated with opposite sides of triangle
+    L2 = np.degrees(np.arccos((l1**2 + y**2 - l2**2) / (2 * l1 * y)))
+    L1 = np.degrees(np.arccos((l1**2 + l2**2 - y**2) / (2 * l1 * l2)))
+
+    # in degrees
+    s = 90 - L2
+    e = 180 - L1
+
+    return s, e
+
+
+# helper for circle goal tasks
+# # get coordinates of 8 points evenly spaced around a circle
+def get_circle_points(radius=0.1, n_points=8, lift_height=0.3):
+    points = []
+    for i in range(n_points):
+        angle = i * 2 * np.pi / n_points
+        x = radius * np.cos(angle)
+        y = radius * np.sin(angle)
+        if lift_height != 0.:
+            y += lift_height
+        points.append([x, y])
+    return np.array(points)
+
+class CentreOutReach(Environment):
+    """A reach to a target around a circle from a central starting position."""
+
+    def __init__(self, radius=0.1, n_points=8, lift_height=0.3, *args, **kwargs):
+        # pass everything as-is to the parent Environment class
+        # self.goal_locations = get_circle_points(radius=0.1, n_points=8, lift_height=0.3)
+        self.lift_height = lift_height
+        self.goal_locations = get_circle_points(radius, n_points, lift_height)
+        super().__init__(*args, **kwargs)
+        self.__name__ = "centre_out_reach"
+
+    # set circle of points as location of potential goals
+    # def set_goal_locations(self, radius, n_points, lift_height=0.):
+        # self.goal_locations = get_circle_points(radius, n_points, lift_height)
+
+    # randomly select point from points around circle
+    def draw_co_goals(self, points, batch_size):
+        # return points[np.random.randint(0, len(points))]
+        random_points = points[np.random.choice(len(points), batch_size)]
+        return th.tensor(random_points, dtype=th.float32).to(self.device)
+
+    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:
+        # reset environment ready for new episode
+
+        self._set_generator(seed)
+
+        options = {} if options is None else options
+        batch_size: int = options.get('batch_size', 1)
+        joint_state: th.Tensor | np.ndarray | None = options.get('joint_state', None)
+        deterministic: bool = options.get('deterministic', False)
+      
+        # next line must be called at some point to reset the effector
+        # to start in the centre, find a joint state which maps to centre of the circle
+        # start shoulder and elbow angles - work in degrees and convert to radians for speed
+        # TODO: based on angles required for fingertip to start at centre of circle. could be a function.
+        # sho_deg = 90-66.278 
+        # elb_deg = 180 - 55.565
+        sho_deg, elb_deg = find_shoulder_elbow_angles_for_coord(self.effector, y=self.lift_height)
+        sho_rad = np.radians(sho_deg)
+        elb_rad = np.radians(elb_deg)
+        joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[sho_rad, elb_rad]]))
+        # joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[0.5236, 2.6179]]))
+        # joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[0.414061912, 2.585862366]]))
+
+        self.effector.reset(options={"batch_size": batch_size, "joint_state": joint_state})
+      
+        # define goal for task here
+        # goal = draw_co_goals(CO_GOAL_LOCATIONS, batch_size)
+        # if self.goal_locations is None:
+        #     self.set_goal_locations(0.1, 8, 0.3)
+            
+        goal = self.draw_co_goals(self.goal_locations, batch_size)
+        # goal = self.joint2cartesian(self.effector.draw_random_uniform_states(batch_size)).chunk(2, dim=-1)[0]
+        self.goal = goal if self.differentiable else self.detach(goal)
+
+        self.elapsed = 0. # track time since befinning of episode. Reset to 0 here
+
+        action = th.zeros((batch_size, self.muscle.n_muscles)).to(self.device)
+
+        # define buffer of past actions/observations
+        # probably don't need to change these
+        # From tutorial:  Each key is associated with a list containing as many elements as the number of timesteps that this buffer goes back to, 
+        # in line with the delay properties provided by the user when creting the object instance. 
+        # It should be proprioception_delay, vision_delay, and action_frame_stacking for proprioception, vision, and action, respectively, and 
+        # their default values should be 1, 1, and 0, respectively. 
+        # The 1st item of the list is always the oldest, and the last is the most recent (the instantaneous state).
+        self.obs_buffer["proprioception"] = [self.get_proprioception()] * len(self.obs_buffer["proprioception"])
+        self.obs_buffer["vision"] = [self.get_vision()] * len(self.obs_buffer["vision"])
+        self.obs_buffer["action"] = [action] * self.action_frame_stacking
+
+        obs = self.get_obs(deterministic=deterministic)
+        info = {
+            "states": self.states,
+            "action": action,
+            "noisy action": action,  # no noise here so it is the same
+            "goal": self.goal,
+            }
+        return obs, info
+
+    def step(self, action, deterministic: bool = False):
+        """
+            Perform one simulation step. This method is likely to be overwritten by any subclass to implement user-defined 
+            computations, such as reward value calculation for reinforcement learning, custom truncation or termination
+            conditions, or time-varying goals.
+            
+            Args:
+            action: `Tensor` or `numpy.ndarray`, the input drive to the actuators.
+            deterministic: `Boolean`, whether observation, action, proprioception, and vision noise are applied.
+            
+            Returns:
+            - The observation vector as `tensor` or `numpy.ndarray`, if the :class:`Environment` is set as differentiable or 
+            not, respectively. It has dimensionality `(batch_size, n_features)`.
+            - A `numpy.ndarray` with the reward information for the step, with dimensionality `(batch_size, 1)`. This is 
+            `None` if the :class:`Environment` is set as differentiable. By default this always returns `0.` in the 
+            :class:`Environment`.
+            - A `boolean` indicating if the simulation has been terminated or truncated. If the :class:`Environment` is set as
+            differentiable, this returns `True` when the simulation time reaches `max_ep_duration` provided at 
+            initialization.
+            - A `boolean` indicating if the simulation has been truncated early or not. This always returns `False` if the
+            :class:`Environment` is set as differentiable.
+            - A `dictionary` containing this step's information.
+        """
+
+        # progress time
+        self.elapsed += self.dt
+
+        # apply noise if needed
+        if deterministic is False:
+            noisy_action = self.apply_noise(action, noise=self.action_noise)
+        else:
+            noisy_action = action
+        
+        # pass action to effector
+        self.effector.step(noisy_action)
+        self.goal = self.goal.clone()
+
+        # get next observation from queue
+        obs = self.get_obs(action=noisy_action)
+        reward = None
+        truncated = False
+        terminated = bool(self.elapsed >= self.max_ep_duration)
+        info = {
+            "states": self.states,
+            "action": action,
+            "noisy action": noisy_action,
+            "goal": self.goal,
+            }
+        
+        return obs, reward, terminated, truncated, info
+
+    def get_proprioception(self):
+        """
+            Returns a `(batch_size, n_features)` `tensor` containing the instantaneous (non-delayed) proprioceptive 
+            feedback. By default, this is the normalized muscle length for each muscle, followed by the normalized
+            muscle velocity for each muscle as well. `.i.i.d.` Gaussian noise is added to each element in the `tensor`,
+            using the :attribute:`proprioception_noise` attribute.
+        """
+        mlen = self.states["muscle"][:, 1:2, :] / self.muscle.l0_ce
+        mvel = self.states["muscle"][:, 2:3, :] / self.muscle.vmax
+        prop = th.concatenate([mlen, mvel], dim=-1).squeeze(dim=1)
+        return self.apply_noise(prop, self.proprioception_noise)
+
+    def get_vision(self):
+        """
+            Returns a `(batch_size, n_features)` `tensor` containing the instantaneous (non-delayed) visual 
+            feedback. By default, this is the cartesian position of the end-point effector, that is, the fingertip.
+            `.i.i.d.` Gaussian noise is added to each element in the `tensor`, using the
+            :attribute:`vision_noise` attribute.
+        """
+        vis = self.states["fingertip"]
+        return self.apply_noise(vis, self.vision_noise)
+
+    def get_obs(self, action=None, deterministic: bool = False):
+        """
+            Returns a `(batch_size, n_features)` `tensor` containing the (potientially time-delayed) observations.
+            By default, this is the task goal, followed by the output of the :meth:`get_proprioception()` method, 
+            the output of the :meth:`get_vision()` method, and finally the last :attr:`action_frame_stacking` action sets,
+            if a non-zero `action_frame_stacking` keyword argument was passed at initialization of this class instance.
+            `.i.i.d.` Gaussian noise is added to each element in the `tensor`,
+            using the :attribute:`obs_noise` attribute.
+        """
+        self.update_obs_buffer(action=action)
+
+        obs_as_list = [
+            self.goal,
+            self.obs_buffer["vision"][0],  # oldest element
+            self.obs_buffer["proprioception"][0],   # oldest element
+            ]
+        obs = th.cat(obs_as_list, dim=-1)
+
+        if deterministic is False:
+            obs = self.apply_noise(obs, noise=self.obs_noise)
+        return obs
+
+
+
+# helper for line goal tasks
+def get_line_miller_points(scale=0.033, lift_height=0.3):
+
+    # original points from the miller experiment
+    original_point_list = [-11, -9, -7, 7, 9, 11]
+
+    new_list = [x * scale for x in original_point_list]
+
+    # add lift height as y coordinate
+    points = [[x, lift_height] for x in new_list]
+
+    return np.array(points)
+
+
+
+class OneDimensionalReach(Environment):
+    """A reach to a 1D target from a central starting position."""
+
+    def __init__(self, scale, lift_height, *args, **kwargs):
+        # pass everything as-is to the parent Environment class
+        self.lift_height = lift_height
+        self.goal_locations = get_line_miller_points(scale, lift_height)
+        super().__init__(*args, **kwargs)
+        self.__name__ = "one_dimension_reach"
+
+    # # set circle of points as location of potential goals
+    # def set_goal_locations(self, scale, lift_height):
+    #     self.goal_locations = get_line_miller_points(scale, lift_height)
+
+    # randomly select point from points around circle
+    def draw_random_goal(self, points, batch_size):
+        # return points[np.random.randint(0, len(points))]
+        random_points = points[np.random.choice(len(points), batch_size)]
+        return th.tensor(random_points, dtype=th.float32).to(self.device)
+
+    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:
+        # reset environment ready for new episode
+
+        self._set_generator(seed)
+
+        options = {} if options is None else options
+        batch_size: int = options.get('batch_size', 1)
+        joint_state: th.Tensor | np.ndarray | None = options.get('joint_state', None)
+        deterministic: bool = options.get('deterministic', False)
+      
+        # next line must be called at some point to reset the effector
+        # to start in the centre, find a joint state which maps to centre of the circle
+        # start shoulder and elbow angles - work in degrees and convert to radians for speed
+        # TODO: based on angles required for fingertip to start at centre of circle. could be a function.
+        sho_deg, elb_deg = find_shoulder_elbow_angles_for_coord(arm=self.effector, y=self.lift_height)
+        # sho_deg = 90-66.278 
+        # elb_deg = 180 - 55.565
+        sho_rad = np.radians(sho_deg)
+        elb_rad = np.radians(elb_deg)
+        joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[sho_rad, elb_rad]]))
+        # joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[0.5236, 2.6179]]))
+        # joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[0.414061912, 2.585862366]]))
+
+        self.effector.reset(options={"batch_size": batch_size, "joint_state": joint_state})
+      
+        # define goal for task here
+        # goal = draw_co_goals(CO_GOAL_LOCATIONS, batch_size)
+        # if self.goal_locations is None:
+            # self.set_goal_locations(0.033, lift_val) # TODO: dont hardcode this obviously
+            
+        # TODO: could be the same function as CO task
+        goal = self.draw_random_goal(self.goal_locations, batch_size)
+        # goal = self.joint2cartesian(self.effector.draw_random_uniform_states(batch_size)).chunk(2, dim=-1)[0]
+        self.goal = goal if self.differentiable else self.detach(goal)
+
+        self.elapsed = 0. # track time since befinning of episode. Reset to 0 here
+
+        action = th.zeros((batch_size, self.muscle.n_muscles)).to(self.device)
+
+        # define buffer of past actions/observations
+        # probably don't need to change these
+        # From tutorial:  Each key is associated with a list containing as many elements as the number of timesteps that this buffer goes back to, 
+        # in line with the delay properties provided by the user when creting the object instance. 
+        # It should be proprioception_delay, vision_delay, and action_frame_stacking for proprioception, vision, and action, respectively, and 
+        # their default values should be 1, 1, and 0, respectively. 
+        # The 1st item of the list is always the oldest, and the last is the most recent (the instantaneous state).
+        self.obs_buffer["proprioception"] = [self.get_proprioception()] * len(self.obs_buffer["proprioception"])
+        self.obs_buffer["vision"] = [self.get_vision()] * len(self.obs_buffer["vision"])
+        self.obs_buffer["action"] = [action] * self.action_frame_stacking
+
+        obs = self.get_obs(deterministic=deterministic)
+        info = {
+            "states": self.states,
+            "action": action,
+            "noisy action": action,  # no noise here so it is the same
+            "goal": self.goal,
+            }
+        return obs, info
+
+    def step(self, action, deterministic: bool = False):
+        """
+            Perform one simulation step. This method is likely to be overwritten by any subclass to implement user-defined 
+            computations, such as reward value calculation for reinforcement learning, custom truncation or termination
+            conditions, or time-varying goals.
+            
+            Args:
+            action: `Tensor` or `numpy.ndarray`, the input drive to the actuators.
+            deterministic: `Boolean`, whether observation, action, proprioception, and vision noise are applied.
+            
+            Returns:
+            - The observation vector as `tensor` or `numpy.ndarray`, if the :class:`Environment` is set as differentiable or 
+            not, respectively. It has dimensionality `(batch_size, n_features)`.
+            - A `numpy.ndarray` with the reward information for the step, with dimensionality `(batch_size, 1)`. This is 
+            `None` if the :class:`Environment` is set as differentiable. By default this always returns `0.` in the 
+            :class:`Environment`.
+            - A `boolean` indicating if the simulation has been terminated or truncated. If the :class:`Environment` is set as
+            differentiable, this returns `True` when the simulation time reaches `max_ep_duration` provided at 
+            initialization.
+            - A `boolean` indicating if the simulation has been truncated early or not. This always returns `False` if the
+            :class:`Environment` is set as differentiable.
+            - A `dictionary` containing this step's information.
+        """
+
+        # progress time
+        self.elapsed += self.dt
+
+        # apply noise if needed
+        if deterministic is False:
+            noisy_action = self.apply_noise(action, noise=self.action_noise)
+        else:
+            noisy_action = action
+        
+        # pass action to effector
+        self.effector.step(noisy_action)
+        self.goal = self.goal.clone()
+
+        # get next observation from queue
+        obs = self.get_obs(action=noisy_action)
+        reward = None
+        truncated = False
+        terminated = bool(self.elapsed >= self.max_ep_duration)
+        info = {
+            "states": self.states,
+            "action": action,
+            "noisy action": noisy_action,
+            "goal": self.goal,
+            }
+        
+        return obs, reward, terminated, truncated, info
+
+    def get_proprioception(self):
+        """
+            Returns a `(batch_size, n_features)` `tensor` containing the instantaneous (non-delayed) proprioceptive 
+            feedback. By default, this is the normalized muscle length for each muscle, followed by the normalized
+            muscle velocity for each muscle as well. `.i.i.d.` Gaussian noise is added to each element in the `tensor`,
+            using the :attribute:`proprioception_noise` attribute.
+        """
+        mlen = self.states["muscle"][:, 1:2, :] / self.muscle.l0_ce
+        mvel = self.states["muscle"][:, 2:3, :] / self.muscle.vmax
+        prop = th.concatenate([mlen, mvel], dim=-1).squeeze(dim=1)
+        return self.apply_noise(prop, self.proprioception_noise)
+
+    def get_vision(self):
+        """
+            Returns a `(batch_size, n_features)` `tensor` containing the instantaneous (non-delayed) visual 
+            feedback. By default, this is the cartesian position of the end-point effector, that is, the fingertip.
+            `.i.i.d.` Gaussian noise is added to each element in the `tensor`, using the
+            :attribute:`vision_noise` attribute.
+        """
+        vis = self.states["fingertip"]
+        return self.apply_noise(vis, self.vision_noise)
+
+    def get_obs(self, action=None, deterministic: bool = False):
+        """
+            Returns a `(batch_size, n_features)` `tensor` containing the (potientially time-delayed) observations.
+            By default, this is the task goal, followed by the output of the :meth:`get_proprioception()` method, 
+            the output of the :meth:`get_vision()` method, and finally the last :attr:`action_frame_stacking` action sets,
+            if a non-zero `action_frame_stacking` keyword argument was passed at initialization of this class instance.
+            `.i.i.d.` Gaussian noise is added to each element in the `tensor`,
+            using the :attribute:`obs_noise` attribute.
+        """
+        self.update_obs_buffer(action=action)
+
+        obs_as_list = [
+            self.goal,
+            self.obs_buffer["vision"][0],  # oldest element
+            self.obs_buffer["proprioception"][0],   # oldest element
+            ]
+        obs = th.cat(obs_as_list, dim=-1)
+
+        if deterministic is False:
+            obs = self.apply_noise(obs, noise=self.obs_noise)
+        return obs
+
+
