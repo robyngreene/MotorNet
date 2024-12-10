@@ -4,6 +4,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+import matplotlib.animation as animation 
+from IPython.display import HTML, display_html # TODO: make sure this works outwith notebooks
 
 
 def compute_limits(data, margin=0.1):
@@ -77,7 +79,7 @@ def _results_to_line_collection(results):
   return segments_all_batches, points
 
 
-def plot_2dof_arm_over_time(axis, arm, joint_state, cmap: str = 'viridis', linewidth: int = 1):
+# def plot_2dof_arm_over_time(axis, arm, joint_state, cmap: str = 'viridis', linewidth: int = 1):
   """Plots an arm26 over time, with earlier and later arm configuration in the movement being represented as darker
   and brighter colors, respectively.
 
@@ -118,3 +120,217 @@ def plot_2dof_arm_over_time(axis, arm, joint_state, cmap: str = 'viridis', linew
   axis.set_xlabel('cartesian x')
   axis.set_ylabel('cartesian y')
   axis.set_aspect('equal', adjustable='box')
+
+
+####################################################################################################
+########################################## CUSTOM PLOTORS ##########################################
+####################################################################################################
+
+# totally static, just plot an arm at a given joint state (corrects original plotor to just plot a single timepoint)
+def plot_arm_location(joint_state, arm, axis, linewidth=1, cmap="viridis"):
+
+    # plot joint from info
+    assert joint_state.shape[0] == 1  # can only take one simulation at a time
+    n_timesteps = joint_state.shape[1]
+    joint_pos = joint_state
+    # joint_pos = np.moveaxis(joint_state, 0, -1).squeeze()
+
+    joint_angle_sum = joint_pos[:, 0] + joint_pos[:, 1]
+    elb_pos_x = arm.skeleton.L1 * np.cos(joint_pos[:, 0])
+    elb_pos_y = arm.skeleton.L1 * np.sin(joint_pos[:, 0])
+    end_pos_x = elb_pos_x + arm.skeleton.L2 * np.cos(joint_angle_sum)
+    end_pos_y = elb_pos_y + arm.skeleton.L2 * np.sin(joint_angle_sum)
+
+    upper_arm_x = np.stack([np.zeros_like(elb_pos_x), elb_pos_x], axis=1)
+    upper_arm_y = np.stack([np.zeros_like(elb_pos_y), elb_pos_y], axis=1)
+    upper_arm = np.stack([upper_arm_x, upper_arm_y], axis=2)
+
+    lower_arm_x = np.stack([elb_pos_x, end_pos_x], axis=1)
+    lower_arm_y = np.stack([elb_pos_y, end_pos_y], axis=1)
+    lower_arm = np.stack([lower_arm_x, lower_arm_y], axis=2)
+
+    segments = np.squeeze(np.concatenate([upper_arm, lower_arm], axis=0))
+    _plot_line_collection(axis, segments, cmap=cmap, linewidth=linewidth, n_gradient=n_timesteps)
+
+    axis.set_xlim(compute_limits(segments[:, :, 0]))
+    axis.set_ylim(compute_limits(segments[:, :, 1]))
+    axis.set_xlabel('cartesian x')
+    axis.set_ylabel('cartesian y')
+    axis.set_aspect('equal', adjustable='box')
+
+# fixed version of: 
+# mn.plotor.plot_2dof_arm_over_time(axis=plt.gca(), arm=effector2, joint_state=joint_traj)
+def plot_2dof_arm_over_time(axis, arm, joint_state, tg=None, cmap: str = 'viridis', linewidth: int = 1):
+
+    """Plots an arm26 over time, with earlier and later arm configuration in the movement being represented as darker
+    and brighter colors, respectively.
+
+    Args:
+        axis: A `matplotlib` axis handle.
+        arm: :class:`motornet.plants.skeletons.TwoDofArm` object to plot.
+        joint_state: A `numpy.ndarray` containing the trajectory. Its dimensionality should be
+            `1 * n_timesteps * (2 . n_dim)`, with `n_dim` being the trajectory's dimensionality. For an `arm26`,
+            since the arm has 2 degrees of freedom, we have`n_dim = 2`, meaning the third dimension of
+            the array is `4` (shoulder position, elbow position, shoulder velocity, elbow velocity).
+        cmap: `String`, colormap supported by `matplotlib`.
+        linewidth: `Integer`, line width of the arm segments being plotted.
+    """
+
+    assert joint_state.shape[0] == 1  # can only take one simulation at a time
+    n_timesteps = joint_state.shape[1]
+    joint_pos = np.moveaxis(joint_state, 0, -1).squeeze()
+
+    joint_angle_sum = joint_pos[:, 0] + joint_pos[:, 1]
+    elb_pos_x = arm.skeleton.L1 * np.cos(joint_pos[:, 0])
+    elb_pos_y = arm.skeleton.L1 * np.sin(joint_pos[:, 0])
+    end_pos_x = elb_pos_x + arm.skeleton.L2 * np.cos(joint_angle_sum)
+    end_pos_y = elb_pos_y + arm.skeleton.L2 * np.sin(joint_angle_sum)
+
+    upper_arm_x = np.stack([np.zeros_like(elb_pos_x), elb_pos_x], axis=1)
+    upper_arm_y = np.stack([np.zeros_like(elb_pos_y), elb_pos_y], axis=1)
+    upper_arm = np.stack([upper_arm_x, upper_arm_y], axis=2)
+
+    lower_arm_x = np.stack([elb_pos_x, end_pos_x], axis=1)
+    lower_arm_y = np.stack([elb_pos_y, end_pos_y], axis=1)
+    lower_arm = np.stack([lower_arm_x, lower_arm_y], axis=2)
+
+    segments = np.squeeze(np.concatenate([upper_arm, lower_arm], axis=0))
+    _plot_line_collection(axis, segments, cmap=cmap, linewidth=linewidth, n_gradient=n_timesteps)
+
+    # add scatter to axis
+    if tg is not None:
+        target_x = tg[0, 0]
+        target_y = tg[0, 1]
+        axis.scatter(target_x, target_y, c='r', s=30)
+
+    # TODO: fix limits for out of bounds target location (if provided). Currently only checks segments
+    axis.set_xlim(compute_limits(segments[:, :, 0]))
+    axis.set_ylim(compute_limits(segments[:, :, 1]))
+    axis.set_xlabel('cartesian x')
+    axis.set_ylabel('cartesian y')
+    axis.set_aspect('equal', adjustable='box')
+
+
+# same as plot but animate over trial
+def animate_2dof_arm_over_time(arm, joint_state, tg=None, cmap: str = 'viridis', linewidth: int = 1):
+    """Plots an arm26 over time, with earlier and later arm configuration in the movement being represented as darker
+    and brighter colors, respectively.
+
+    Args:
+        arm: :class:`motornet.plants.skeletons.TwoDofArm` object to plot.
+        joint_state: A `numpy.ndarray` containing the trajectory. Its dimensionality should be
+            `1 * n_timesteps * (2 . n_dim)`, with `n_dim` being the trajectory's dimensionality. For an `arm26`,
+            since the arm has 2 degrees of freedom, we have`n_dim = 2`, meaning the third dimension of
+            the array is `4` (shoulder position, elbow position, shoulder velocity, elbow velocity).
+        cmap: `String`, colormap supported by `matplotlib`.
+        linewidth: `Integer`, line width of the arm segments being plotted.
+    """
+
+    # check input and reshpe
+    assert joint_state.shape[0] == 1  # can only take one simulation at a time
+    n_timesteps = joint_state.shape[1]
+    joint_pos = np.moveaxis(joint_state, 0, -1).squeeze()
+
+    # setup figure 
+    fig = plt.figure()
+    axis = plt.axes()
+
+    # compute arm geometry
+    joint_angle_sum = joint_pos[:, 0] + joint_pos[:, 1]
+    elb_pos_x = arm.skeleton.L1 * np.cos(joint_pos[:, 0])
+    elb_pos_y = arm.skeleton.L1 * np.sin(joint_pos[:, 0])
+    end_pos_x = elb_pos_x + arm.skeleton.L2 * np.cos(joint_angle_sum)
+    end_pos_y = elb_pos_y + arm.skeleton.L2 * np.sin(joint_angle_sum)
+
+    upper_arm_x = np.stack([np.zeros_like(elb_pos_x), elb_pos_x], axis=1)
+    upper_arm_y = np.stack([np.zeros_like(elb_pos_y), elb_pos_y], axis=1)
+    upper_arm = np.stack([upper_arm_x, upper_arm_y], axis=2)
+
+    lower_arm_x = np.stack([elb_pos_x, end_pos_x], axis=1)
+    lower_arm_y = np.stack([elb_pos_y, end_pos_y], axis=1)
+    lower_arm = np.stack([lower_arm_x, lower_arm_y], axis=2)
+
+    # get segments across everything for bounds, then for upper and lower arm.
+    # shape: n_lines * 2 * space_dim
+    segments = np.squeeze(np.concatenate([upper_arm, lower_arm], axis=0))
+    segments_l = np.squeeze(lower_arm)
+    segments_u = np.squeeze(upper_arm)
+
+    # limits for segment overall
+    # TODO: fix limits for out of bounds target location (if provided). Currently only checks segments
+    axis.set_xlim(compute_limits(segments[:, :, 0]))
+    axis.set_ylim(compute_limits(segments[:, :, 1]))
+
+    # axis formatting
+    axis.set_xlabel('cartesian x')
+    axis.set_ylabel('cartesian y')
+    axis.set_aspect('equal', adjustable='box')
+    axis.spines['top'].set_visible(False)
+    axis.spines['right'].set_visible(False)
+    
+    # for colours
+    norm = plt.Normalize(0, n_timesteps)  # Create a continuous norm to map from data points to colors
+
+    # initialise plotted line collection
+    lc = LineCollection([], cmap=cmap, norm=norm)
+    axis.add_collection(lc)
+
+    if tg is not None:
+        target_x = tg[0, 0]
+        target_y = tg[0, 1]
+        axis.scatter(target_x, target_y, c='r', s=30)
+
+    # used to reset lc between timesteps
+    def init():
+        lc.set_segments([])
+        return lc,
+
+    # get line segments for each timestep and update line collection
+    def animate(frame_number, lc): 
+    
+        # get upper and lower arm pos at time frame_number from full segments
+        segments_i = np.squeeze(np.concatenate([segments_u[frame_number:frame_number+1,:,:], segments_l[frame_number:frame_number+1,:,:]], axis=0))
+
+        # add line collection for current segment
+        lc.set_segments(segments_i)
+        lc.set_array(np.arange(frame_number, n_timesteps))
+        lc.set_linewidth(linewidth)
+
+        return lc,
+
+    # actually animate
+    anim = animation.FuncAnimation(fig, animate, fargs=[lc], frames=n_timesteps, init_func=init, interval=50, blit=True)
+
+    # add colorbar
+    clb = fig.colorbar(lc, ax=axis, shrink=0.6)
+    clb.set_label('timestep')
+      
+    # display
+    display_html(HTML(anim.to_jshtml()))
+    plt.close() 
+
+    # TODO: add save option for gif
+
+
+# plot cursor position over time
+def plot_simulations(xy, target_xy):
+  target_x = target_xy[:, -1, 0]
+  target_y = target_xy[:, -1, 1]
+
+  plt.figure(figsize=(10,3))
+
+  plt.subplot(1,2,1)
+  plt.ylim([-1.1, 1.1])
+  plt.xlim([-1.1, 1.1])
+  plot_pos_over_time(axis=plt.gca(), cart_results=xy)
+  plt.scatter(target_x, target_y)
+
+  plt.subplot(1,2,2)
+  plt.ylim([-2, 2])
+  plt.xlim([-2, 2])
+  plot_pos_over_time(axis=plt.gca(), cart_results=xy - target_xy)
+  plt.axhline(0, c="grey")
+  plt.axvline(0, c="grey")
+  plt.xlabel("X distance to target")
+  plt.ylabel("Y distance to target")
+  plt.show()
