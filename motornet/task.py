@@ -13,12 +13,15 @@ class Task:
         self,
         name : str = 'Task',
         goal_locations=None,
-        # start_locations=None,
+        start_coord_x=0,
+        start_coord_y=None,
     ):
         self.__name__ = name
         self.goal_locations = goal_locations
         # self.start_locations = start_locations
-        # super().__init__(*args, **kwargs)
+        self.start_coord_x = start_coord_x
+        self.start_coord_y = start_coord_y
+
 
 
 
@@ -54,22 +57,20 @@ class OneDimensionalReach(Task):
         lift_height=0.4,
         # goal_locations=None,
         start_coord_x=0,
-        start_coord_y=None,
+        start_coord_y=0.4,
     ):
         
-        self.scale =scale
-        # self.lift_height = lift_height
+        # self.scale =scale
 
-        self.goal_locations = get_line_miller_points(self.scale, lift_height)
+        goal_locations = get_line_miller_points(scale, lift_height)
 
-        self.start_coord_x = start_coord_x
+        start_coord_x = start_coord_x
         # set start_coord_y with default lift height if none is provided
-        self.start_coord_y = lift_height if start_coord_y is None else start_coord_y
-        super().__init__(name)
+        start_coord_y = start_coord_y
 
-    # def set_goal_start_locations(self):
+        super().__init__(name, goal_locations, start_coord_x, start_coord_y)
 
-    #     self.goal_locations = 
+   
 
 
 

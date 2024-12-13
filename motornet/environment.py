@@ -421,6 +421,8 @@ class Environment(gym.Env, th.nn.Module):
         value = value.tolist()
       if attribute in ("T_destination", "device"):
         value = str(value)
+      if attribute == "tasks": # tasks are not JSON serializable
+        value = [task.__name__ for task in value]
       cfg[attribute] = value
 
     cfg["effector"] = self.effector.get_save_config()
@@ -505,13 +507,13 @@ class RandomTargetReach(Environment):
 
 # helper for envs in general
 # find shoulder and elbow angles for given fingertip location
-def find_shoulder_elbow_angles_for_coord(arm, y, x=None):
+def find_shoulder_elbow_angles_for_coord(arm, y, x=0):
 
     l1 = arm.skeleton.L1
     l2 = arm.skeleton.L2
 
-    # if x is not (None or 0):
-    #     raise NotImplementedError("Only y coordinate is supported for now.")
+    if x != 0:
+        raise NotImplementedError("Only y coordinate is supported for now.")
 
     # angles associated with opposite sides of triangle
     L2 = np.degrees(np.arccos((l1**2 + y**2 - l2**2) / (2 * l1 * y)))
@@ -930,7 +932,7 @@ class MultiTaskReach(Environment):
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:
         # reset environment ready for new episode
 
-        # which task to do
+        # which task to do - currently random
         task_idx = np.random.choice(len(self.tasks))
 
         self._set_generator(seed)
