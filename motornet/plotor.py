@@ -79,47 +79,47 @@ def _results_to_line_collection(results):
   return segments_all_batches, points
 
 
-# def plot_2dof_arm_over_time(axis, arm, joint_state, cmap: str = 'viridis', linewidth: int = 1):
-  """Plots an arm26 over time, with earlier and later arm configuration in the movement being represented as darker
-  and brighter colors, respectively.
+# # def plot_2dof_arm_over_time(axis, arm, joint_state, cmap: str = 'viridis', linewidth: int = 1):
+#   """Plots an arm26 over time, with earlier and later arm configuration in the movement being represented as darker
+#   and brighter colors, respectively.
 
-  Args:
-    axis: A `matplotlib` axis handle.
-    arm: :class:`motornet.plants.skeletons.TwoDofArm` object to plot.
-    joint_state: A `numpy.ndarray` containing the trajectory. Its dimensionality should be
-      `1 * n_timesteps * (2 . n_dim)`, with `n_dim` being the trajectory's dimensionality. For an `arm26`,
-      since the arm has 2 degrees of freedom, we have`n_dim = 2`, meaning the third dimension of
-      the array is `4` (shoulder position, elbow position, shoulder velocity, elbow velocity).
-    cmap: `String`, colormap supported by `matplotlib`.
-    linewidth: `Integer`, line width of the arm segments being plotted.
-  """
+#   Args:
+#     axis: A `matplotlib` axis handle.
+#     arm: :class:`motornet.plants.skeletons.TwoDofArm` object to plot.
+#     joint_state: A `numpy.ndarray` containing the trajectory. Its dimensionality should be
+#       `1 * n_timesteps * (2 . n_dim)`, with `n_dim` being the trajectory's dimensionality. For an `arm26`,
+#       since the arm has 2 degrees of freedom, we have`n_dim = 2`, meaning the third dimension of
+#       the array is `4` (shoulder position, elbow position, shoulder velocity, elbow velocity).
+#     cmap: `String`, colormap supported by `matplotlib`.
+#     linewidth: `Integer`, line width of the arm segments being plotted.
+#   """
 
-  assert joint_state.shape[0] == 1  # can only take one simulation at a time
-  n_timesteps = joint_state.shape[1]
-  joint_pos = np.moveaxis(joint_state, 0, -1).squeeze()
+#   assert joint_state.shape[0] == 1  # can only take one simulation at a time
+#   n_timesteps = joint_state.shape[1]
+#   joint_pos = np.moveaxis(joint_state, 0, -1).squeeze()
 
-  joint_angle_sum = joint_pos[:, 0] + joint_pos[:, 1]
-  elb_pos_x = arm.L1 * np.cos(joint_pos[:, 0])
-  elb_pos_y = arm.L1 * np.sin(joint_pos[:, 0])
-  end_pos_x = elb_pos_x + arm.L2 * np.cos(joint_angle_sum)
-  end_pos_y = elb_pos_y + arm.L2 * np.sin(joint_angle_sum)
+#   joint_angle_sum = joint_pos[:, 0] + joint_pos[:, 1]
+#   elb_pos_x = arm.L1 * np.cos(joint_pos[:, 0])
+#   elb_pos_y = arm.L1 * np.sin(joint_pos[:, 0])
+#   end_pos_x = elb_pos_x + arm.L2 * np.cos(joint_angle_sum)
+#   end_pos_y = elb_pos_y + arm.L2 * np.sin(joint_angle_sum)
 
-  upper_arm_x = np.stack([np.zeros_like(elb_pos_x), elb_pos_x], axis=1)
-  upper_arm_y = np.stack([np.zeros_like(elb_pos_y), elb_pos_y], axis=1)
-  upper_arm = np.stack([upper_arm_x, upper_arm_y], axis=2)
+#   upper_arm_x = np.stack([np.zeros_like(elb_pos_x), elb_pos_x], axis=1)
+#   upper_arm_y = np.stack([np.zeros_like(elb_pos_y), elb_pos_y], axis=1)
+#   upper_arm = np.stack([upper_arm_x, upper_arm_y], axis=2)
 
-  lower_arm_x = np.stack([elb_pos_x, end_pos_x], axis=1)
-  lower_arm_y = np.stack([elb_pos_y, end_pos_y], axis=1)
-  lower_arm = np.stack([lower_arm_x, lower_arm_y], axis=2)
+#   lower_arm_x = np.stack([elb_pos_x, end_pos_x], axis=1)
+#   lower_arm_y = np.stack([elb_pos_y, end_pos_y], axis=1)
+#   lower_arm = np.stack([lower_arm_x, lower_arm_y], axis=2)
 
-  segments = np.squeeze(np.concatenate([upper_arm, lower_arm], axis=0))
-  _plot_line_collection(axis, segments, cmap=cmap, linewidth=linewidth, n_gradient=n_timesteps)
+#   segments = np.squeeze(np.concatenate([upper_arm, lower_arm], axis=0))
+#   _plot_line_collection(axis, segments, cmap=cmap, linewidth=linewidth, n_gradient=n_timesteps)
 
-  axis.set_xlim(compute_limits(segments[:, :, 0]))
-  axis.set_ylim(compute_limits(segments[:, :, 1]))
-  axis.set_xlabel('cartesian x')
-  axis.set_ylabel('cartesian y')
-  axis.set_aspect('equal', adjustable='box')
+#   axis.set_xlim(compute_limits(segments[:, :, 0]))
+#   axis.set_ylim(compute_limits(segments[:, :, 1]))
+#   axis.set_xlabel('cartesian x')
+#   axis.set_ylabel('cartesian y')
+#   axis.set_aspect('equal', adjustable='box')
 
 
 ####################################################################################################
@@ -160,7 +160,7 @@ def plot_arm_location(joint_state, arm, axis, linewidth=1, cmap="viridis"):
 
 # fixed version of: 
 # mn.plotor.plot_2dof_arm_over_time(axis=plt.gca(), arm=effector2, joint_state=joint_traj)
-def plot_2dof_arm_over_time(axis, arm, joint_state, tg=None, cmap: str = 'viridis', linewidth: int = 1):
+def plot_2dof_arm_over_time(axis, arm, joint_state, tg=None, goal_locs=None, cmap: str = 'viridis', linewidth: int = 1):
 
     """Plots an arm26 over time, with earlier and later arm configuration in the movement being represented as darker
     and brighter colors, respectively.
@@ -197,15 +197,37 @@ def plot_2dof_arm_over_time(axis, arm, joint_state, tg=None, cmap: str = 'viridi
     segments = np.squeeze(np.concatenate([upper_arm, lower_arm], axis=0))
     _plot_line_collection(axis, segments, cmap=cmap, linewidth=linewidth, n_gradient=n_timesteps)
 
-    # add scatter to axis
+
+    # TODO: clean this up
+    if goal_locs is not None:
+      min_x, max_x = compute_limits(segments[:, :, 0])
+      min_goal_x, max_goal_x = compute_limits(goal_locs[:, 0])
+      min_x = min(min_x, min_goal_x)
+      max_x = max(max_x, max_goal_x)
+
+      min_y, max_y = compute_limits(segments[:, :, 1])
+      min_goal_y, max_goal_y = compute_limits(goal_locs[:, 1])
+      min_y = min(min_y, min_goal_y)
+      max_y = max(max_y, max_goal_y)
+
+      # if target is in goal locations, remove
+      if tg is not None:
+        goal_locs = goal_locs[~np.all(goal_locs == tg, axis=1)]
+      axis.plot(goal_locs[:, 0], goal_locs[:, 1], 'o')
+
+    else:
+      min_x, max_x = compute_limits(segments[:, :, 0])
+      min_y, max_y = compute_limits(segments[:, :, 1])
+
+    # add target to axis
     if tg is not None:
         target_x = tg[0, 0]
         target_y = tg[0, 1]
-        axis.scatter(target_x, target_y, c='r', s=30)
+        # add target location at foreground
+        axis.scatter(target_x, target_y, c='r', s=30, zorder=10)
 
-    # TODO: fix limits for out of bounds target location (if provided). Currently only checks segments
-    axis.set_xlim(compute_limits(segments[:, :, 0]))
-    axis.set_ylim(compute_limits(segments[:, :, 1]))
+    axis.set_xlim([min_x, max_x])
+    axis.set_ylim([min_y, max_y])
     axis.set_xlabel('cartesian x')
     axis.set_ylabel('cartesian y')
     axis.set_aspect('equal', adjustable='box')
@@ -322,12 +344,16 @@ def plot_simulations(xy, target_xy):
   plt.subplot(1,2,1)
   plt.ylim([-1.1, 1.1])
   plt.xlim([-1.1, 1.1])
+  # plt.ylim([-1, 1])
+  # plt.xlim([-0.5, 0.5])
   plot_pos_over_time(axis=plt.gca(), cart_results=xy)
   plt.scatter(target_x, target_y)
 
-  plt.subplot(1,2,2)
-  plt.ylim([-2, 2])
-  plt.xlim([-2, 2])
+  plt.subplot(1,2,2) # TODO: should not be hardcpded obviously
+  # plt.ylim([-2, 2])
+  plt.ylim([-0.5, 0.5])
+  # plt.xlim([-2, 2])
+  plt.xlim([-0.5, 0.5])
   plot_pos_over_time(axis=plt.gca(), cart_results=xy - target_xy)
   plt.axhline(0, c="grey")
   plt.axvline(0, c="grey")

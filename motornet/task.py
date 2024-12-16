@@ -20,7 +20,7 @@ class Task:
         self.goal_locations = goal_locations
         # self.start_locations = start_locations
         self.start_coord_x = start_coord_x
-        self.start_coord_y = start_coord_y
+        self.start_coord_y = start_coord_y # TODO: if start coord for hand is none, find midpoint of goals
 
 
 
@@ -43,7 +43,7 @@ def get_line_miller_points(scale, lift_height):
 
 class OneDimensionalReach(Task):
 
-    """Centre-out reach task.
+    """Centre-out reach task (1D).
 
     Args:
         ...
@@ -54,23 +54,58 @@ class OneDimensionalReach(Task):
         self,
         name : str = 'OneDimensionalReach',
         scale=0.033,
-        lift_height=0.4,
-        # goal_locations=None,
+        # lift_height=0.4,
         start_coord_x=0,
         start_coord_y=0.4,
     ):
         
         # self.scale =scale
 
-        goal_locations = get_line_miller_points(scale, lift_height)
+        goal_locations = get_line_miller_points(scale, start_coord_y)
 
         start_coord_x = start_coord_x
         # set start_coord_y with default lift height if none is provided
-        start_coord_y = start_coord_y
+        # start_coord_y = start_coord_y
 
         super().__init__(name, goal_locations, start_coord_x, start_coord_y)
 
    
+
+
+# helper for circle goal tasks
+# # get coordinates of 8 points evenly spaced around a circle
+def get_circle_points(radius=0.1, n_points=8, lift_height=0.3):
+    points = []
+    for i in range(n_points):
+        angle = i * 2 * np.pi / n_points
+        x = radius * np.cos(angle)
+        y = radius * np.sin(angle)
+        if lift_height != 0.:
+            y += lift_height
+        points.append([x, y])
+    return np.array(points)
+
+class CentreOutReach(Task):
+
+    """Centre-out reach task.
+    
+    Args:
+        ...
+    """
+
+    def __init__(
+        self,
+        name : str = 'CentreOutReach',
+        # lift_height=0.4,
+        start_coord_x=0,
+        start_coord_y=0.4,
+        radius=0.1,
+        n_points=8,
+
+    ):
+        goal_locations = get_circle_points(radius, n_points, start_coord_y)
+
+        super().__init__(name, goal_locations, start_coord_x, start_coord_y)
 
 
 

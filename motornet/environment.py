@@ -525,7 +525,7 @@ def find_shoulder_elbow_angles_for_coord(arm, y, x=0):
 
     return s, e
 
-
+# TODO: remove from file, should just be in tasks (maybe shortcut)
 # helper for circle goal tasks
 # # get coordinates of 8 points evenly spaced around a circle
 def get_circle_points(radius=0.1, n_points=8, lift_height=0.3):
@@ -549,10 +549,6 @@ class CentreOutReach(Environment):
         self.goal_locations = get_circle_points(radius, n_points, lift_height)
         super().__init__(*args, **kwargs)
         self.__name__ = "centre_out_reach"
-
-    # set circle of points as location of potential goals
-    # def set_goal_locations(self, radius, n_points, lift_height=0.):
-        # self.goal_locations = get_circle_points(radius, n_points, lift_height)
 
     # randomly select point from points around circle
     def draw_co_goals(self, points, batch_size):
@@ -580,15 +576,8 @@ class CentreOutReach(Environment):
         sho_rad = np.radians(sho_deg)
         elb_rad = np.radians(elb_deg)
         joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[sho_rad, elb_rad]]))
-        # joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[0.5236, 2.6179]]))
-        # joint_state = self.effector.draw_fixed_states(batch_size=batch_size, position=th.tensor([[0.414061912, 2.585862366]]))
 
         self.effector.reset(options={"batch_size": batch_size, "joint_state": joint_state})
-      
-        # define goal for task here
-        # goal = draw_co_goals(CO_GOAL_LOCATIONS, batch_size)
-        # if self.goal_locations is None:
-        #     self.set_goal_locations(0.1, 8, 0.3)
             
         goal = self.draw_co_goals(self.goal_locations, batch_size)
         # goal = self.joint2cartesian(self.effector.draw_random_uniform_states(batch_size)).chunk(2, dim=-1)[0]
@@ -740,10 +729,6 @@ class OneDimensionalReach(Environment):
         self.goal_locations = get_line_miller_points(scale, lift_height)
         super().__init__(*args, **kwargs)
         self.__name__ = "one_dimension_reach"
-
-    # # set circle of points as location of potential goals
-    # def set_goal_locations(self, scale, lift_height):
-    #     self.goal_locations = get_line_miller_points(scale, lift_height)
 
     # randomly select point from points around circle
     def draw_random_goal(self, points, batch_size):
@@ -915,6 +900,7 @@ class MultiTaskReach(Environment):
         # pass everything as-is to the parent Environment class
 
         self.tasks = tasks
+        self.training_schedule = training_schedule
 
         # check all start states are same across tasks
         start_states = [(task.start_coord_x, task.start_coord_y) for task in tasks]
@@ -931,9 +917,7 @@ class MultiTaskReach(Environment):
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:
         # reset environment ready for new episode
-
-        # which task to do - currently random
-        task_idx = np.random.choice(len(self.tasks))
+        # in options, can include a 
 
         self._set_generator(seed)
 
@@ -941,6 +925,20 @@ class MultiTaskReach(Environment):
         batch_size: int = options.get('batch_size', 1)
         joint_state: th.Tensor | np.ndarray | None = options.get('joint_state', None)
         deterministic: bool = options.get('deterministic', False)
+
+        # which task to do - currently random
+        task_name: str = options.get('task_name', None)
+        if task_name is not None:
+            # check task name is valid
+            task_names = [task.__name__ for task in self.tasks]
+            assert task_name in [task.__name__ for task in self.tasks], "Invalid task name. Valid names are: " + ", ".join(task_names)
+            task_idx = task_names.index(task_name) # check this
+        else:
+            task_idx = np.random.choice(len(self.tasks))
+            
+        # track which task is used for each reset over training
+        self.curr_task_name = self.tasks[task_idx].__name__
+        self.training_schedule.append(self.curr_task_name)
       
         # next line must be called at some point to reset the effector
         # to start in the centre, find a joint state which maps to centre of the circle
@@ -982,6 +980,7 @@ class MultiTaskReach(Environment):
             "action": action,
             "noisy action": action,  # no noise here so it is the same
             "goal": self.goal,
+            "task": self.curr_task_name,
             }
         return obs, info
 
@@ -1032,6 +1031,7 @@ class MultiTaskReach(Environment):
             "action": action,
             "noisy action": noisy_action,
             "goal": self.goal,
+            "task": self.curr_task_name,
             }
         
         return obs, reward, terminated, truncated, info
