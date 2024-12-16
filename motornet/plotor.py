@@ -128,6 +128,7 @@ def _results_to_line_collection(results):
 
 # totally static, just plot an arm at a given joint state (corrects original plotor to just plot a single timepoint)
 def plot_arm_location(joint_state, arm, axis, linewidth=1, cmap="viridis"):
+  
 
     # plot joint from info
     assert joint_state.shape[0] == 1  # can only take one simulation at a time

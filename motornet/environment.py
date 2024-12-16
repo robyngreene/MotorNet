@@ -891,8 +891,6 @@ class OneDimensionalReach(Environment):
         return obs
 
 
-
-
 class MultiTaskReach(Environment):
     """A reach to a 1D target from a central starting position."""
 
@@ -917,7 +915,7 @@ class MultiTaskReach(Environment):
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:
         # reset environment ready for new episode
-        # in options, can include a 
+        # in options, can include a task name to specify which task to do
 
         self._set_generator(seed)
 
