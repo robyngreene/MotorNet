@@ -11,7 +11,8 @@ DEVICE = th.device("cpu")
 
 
 class Effector(th.nn.Module):
-    """Base class for `Effector` objects.
+    """
+    Base class for `Effector` objects.
 
     Args:
       skeleton: A :class:`motornet.skeleton.Skeleton` object class or subclass. This defines the type of

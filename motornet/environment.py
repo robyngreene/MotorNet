@@ -584,7 +584,7 @@ def find_shoulder_elbow_angles_for_coord(arm, y, x=0):
     return s, e
 
 
-# TODO: remove from file, should just be in tasks (maybe shortcut)
+# TODO: remove from file, should just be in tasks (maybe shortcut) - needed currently as test space for refactoring environment and tasks
 # helper for circle goal tasks
 # # get coordinates of 8 points evenly spaced around a circle
 def get_circle_points(radius=0.1, n_points=8, lift_height=0.3):
@@ -599,6 +599,9 @@ def get_circle_points(radius=0.1, n_points=8, lift_height=0.3):
     return np.array(points)
 
 
+"""
+Base class - do not delete until all tasks working in multitask
+"""
 class CentreOutReach(Environment):
     """A reach to a target around a circle from a central starting position."""
 
@@ -773,9 +776,10 @@ class CentreOutReach(Environment):
         return obs
 
 
-# TODO: remove, should just be in task
+# TODO: remove, should just be in task - remove after all features integrated into Task environment approach
 # helper for line goal tasks
 def get_line_miller_points(scale=0.033, lift_height=0.3):
+    
 
     # original points from the miller experiment
     original_point_list = [-11, -9, -7, 7, 9, 11]
@@ -976,7 +980,8 @@ class MultiTaskReach(Environment):
         # pass everything as-is to the parent Environment class
 
         self.tasks = tasks
-        self.training_schedule = training_schedule
+        self.training_schedule = training_schedule # TODO: training schedule should be indices not names
+        # TODO: should be able to set training schedule, currently just logging the randomly allocated task, or allowing a single task choice at reset
 
         # check all start states are same across tasks
         start_states = [(task.start_coord_x, task.start_coord_y) for task in tasks]
@@ -1023,7 +1028,6 @@ class MultiTaskReach(Environment):
         # next line must be called at some point to reset the effector
         # to start in the centre, find a joint state which maps to centre of the circle
         # start shoulder and elbow angles - work in degrees and convert to radians for speed
-        # TODO: based on angles required for fingertip to start at centre of circle. could be a function.
         sho_deg, elb_deg = find_shoulder_elbow_angles_for_coord(
             arm=self.effector,
             y=self.tasks[0].start_coord_y,

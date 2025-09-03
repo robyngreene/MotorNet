@@ -24,7 +24,7 @@ class Task:
 
 
 # helper for line goal tasks
-def get_line_miller_points(scale, lift_height):
+def get_line_miller_points(scale=0.011, lift_height=0.4):
     # scale relative to original point list from experiment
     # lift height is the y coordinate of the points
 
@@ -50,7 +50,7 @@ class OneDimensionalReach(Task):
     def __init__(
         self,
         name: str = "OneDimensionalReach",
-        scale=0.033,
+        scale=0.011,
         # lift_height=0.4,
         start_coord_x=0,
         start_coord_y=0.4,
@@ -69,7 +69,7 @@ class OneDimensionalReach(Task):
 
 # helper for circle goal tasks
 # # get coordinates of 8 points evenly spaced around a circle
-def get_circle_points(radius=0.1, n_points=8, lift_height=0.3):
+def get_circle_points(radius=0.1, n_points=8, lift_height=0.4):
     points = []
     for i in range(n_points):
         angle = i * 2 * np.pi / n_points

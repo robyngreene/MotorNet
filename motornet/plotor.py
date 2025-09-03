@@ -30,7 +30,9 @@ def compute_limits(data, margin=0.1):
     return minval, maxval
 
 
+# helper for plots with line collections (eg: trajectory over time)
 def _plot_line_collection(axis, segments, cmap="viridis", linewidth: int = 1, **kwargs):
+    
     n_gradient = kwargs.get("n_gradient", segments.shape[0])
 
     norm = plt.Normalize(
@@ -68,6 +70,7 @@ def plot_pos_over_time(cart_results, axis, cmap="viridis"):
     axis.margins(0.05)
 
 
+# helper for plots with line collections (eg: trajectory over time)
 def _results_to_line_collection(results):
     # each line is a segment of the trajectory (a sample), and it will have its own colour from the gradent
     # each line has two values (per dimension): start point and end point
@@ -86,62 +89,34 @@ def _results_to_line_collection(results):
     return segments_all_batches, points
 
 
-# # def plot_2dof_arm_over_time(axis, arm, joint_state, cmap: str = 'viridis', linewidth: int = 1):
-#   """Plots an arm26 over time, with earlier and later arm configuration in the movement being represented as darker
-#   and brighter colors, respectively.
-
-#   Args:
-#     axis: A `matplotlib` axis handle.
-#     arm: :class:`motornet.plants.skeletons.TwoDofArm` object to plot.
-#     joint_state: A `numpy.ndarray` containing the trajectory. Its dimensionality should be
-#       `1 * n_timesteps * (2 . n_dim)`, with `n_dim` being the trajectory's dimensionality. For an `arm26`,
-#       since the arm has 2 degrees of freedom, we have`n_dim = 2`, meaning the third dimension of
-#       the array is `4` (shoulder position, elbow position, shoulder velocity, elbow velocity).
-#     cmap: `String`, colormap supported by `matplotlib`.
-#     linewidth: `Integer`, line width of the arm segments being plotted.
-#   """
-
-#   assert joint_state.shape[0] == 1  # can only take one simulation at a time
-#   n_timesteps = joint_state.shape[1]
-#   joint_pos = np.moveaxis(joint_state, 0, -1).squeeze()
-
-#   joint_angle_sum = joint_pos[:, 0] + joint_pos[:, 1]
-#   elb_pos_x = arm.L1 * np.cos(joint_pos[:, 0])
-#   elb_pos_y = arm.L1 * np.sin(joint_pos[:, 0])
-#   end_pos_x = elb_pos_x + arm.L2 * np.cos(joint_angle_sum)
-#   end_pos_y = elb_pos_y + arm.L2 * np.sin(joint_angle_sum)
-
-#   upper_arm_x = np.stack([np.zeros_like(elb_pos_x), elb_pos_x], axis=1)
-#   upper_arm_y = np.stack([np.zeros_like(elb_pos_y), elb_pos_y], axis=1)
-#   upper_arm = np.stack([upper_arm_x, upper_arm_y], axis=2)
-
-#   lower_arm_x = np.stack([elb_pos_x, end_pos_x], axis=1)
-#   lower_arm_y = np.stack([elb_pos_y, end_pos_y], axis=1)
-#   lower_arm = np.stack([lower_arm_x, lower_arm_y], axis=2)
-
-#   segments = np.squeeze(np.concatenate([upper_arm, lower_arm], axis=0))
-#   _plot_line_collection(axis, segments, cmap=cmap, linewidth=linewidth, n_gradient=n_timesteps)
-
-#   axis.set_xlim(compute_limits(segments[:, :, 0]))
-#   axis.set_ylim(compute_limits(segments[:, :, 1]))
-#   axis.set_xlabel('cartesian x')
-#   axis.set_ylabel('cartesian y')
-#   axis.set_aspect('equal', adjustable='box')
-
-
 ####################################################################################################
 ########################################## CUSTOM PLOTORS ##########################################
 ####################################################################################################
 
 
 # totally static, just plot an arm at a given joint state (corrects original plotor to just plot a single timepoint)
+# TODO: check the joint state dimensions match the docstring
 def plot_arm_location(joint_state, arm, axis, linewidth=1, cmap="viridis"):
+    """Plots location of arm at a single point in time. by default the first value in cmap is used for colour.
+
+    Args:
+        joint_state: A `numpy.ndarray` containing the single-timepoint trajectory. Its 
+            dimensionality should be `1 * 1 * (2 . n_dim)`, with `n_dim` being the trajectory's dimensionality. For an `arm26`,
+            since the arm has 2 degrees of freedom, we have`n_dim = 2`, meaning the third dimension of
+            the array is `4` (shoulder position, elbow position, shoulder velocity, elbow velocity).
+        arm: :class:`motornet.plants.skeletons.TwoDofArm` object to plot.
+        axis: A `matplotlib` axis handle to plot the trajectories.
+      cart_results: A `numpy.ndarray` containing the trajectories. Its dimensionality should be
+        `(n_batches * n_timesteps * n_dim)`, with `n_dim` being the trajectory's dimensionality. For instance,
+        for a planar reach, since the movement is in 2D space, we have`n_dim = 2`, meaning the third dimension of
+        the array is `2` (`x` position, `y` position).
+      cmap: `String` or `matplotlib` colormap object, the colormap to use to visualize positions over time.
+    """
 
     # plot joint from info
     assert joint_state.shape[0] == 1  # can only take one simulation at a time
     n_timesteps = joint_state.shape[1]
     joint_pos = joint_state
-    # joint_pos = np.moveaxis(joint_state, 0, -1).squeeze()
 
     joint_angle_sum = joint_pos[:, 0] + joint_pos[:, 1]
     elb_pos_x = arm.skeleton.L1 * np.cos(joint_pos[:, 0])
@@ -190,6 +165,7 @@ def plot_2dof_arm_over_time(
             `1 * n_timesteps * (2 . n_dim)`, with `n_dim` being the trajectory's dimensionality. For an `arm26`,
             since the arm has 2 degrees of freedom, we have`n_dim = 2`, meaning the third dimension of
             the array is `4` (shoulder position, elbow position, shoulder velocity, elbow velocity).
+        tg: target location to be plotted. D
         cmap: `String`, colormap supported by `matplotlib`.
         linewidth: `Integer`, line width of the arm segments being plotted.
     """
@@ -388,11 +364,11 @@ def plot_simulations(xy, target_xy):
     plot_pos_over_time(axis=plt.gca(), cart_results=xy)
     plt.scatter(target_x, target_y)
 
-    plt.subplot(1, 2, 2)  # TODO: should not be hardcpded obviously
+    plt.subplot(1, 2, 2)  
     # plt.ylim([-2, 2])
-    plt.ylim([-0.5, 0.5])
+    plt.ylim([-0.5, 0.5]) # TODO: should not be hardcpded obviously
     # plt.xlim([-2, 2])
-    plt.xlim([-0.5, 0.5])
+    plt.xlim([-0.5, 0.5]) # TODO: should not be hardcpded obviously
     plot_pos_over_time(axis=plt.gca(), cart_results=xy - target_xy)
     plt.axhline(0, c="grey")
     plt.axvline(0, c="grey")

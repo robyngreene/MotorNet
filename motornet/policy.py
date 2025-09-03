@@ -3,15 +3,33 @@ import torch.nn as nn
 
 
 class PolicyGRU(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, device):
+    """
+    Basic GRU RNN module.
+
+    Args:
+        input_dim: `Integer`, The number of dimensions used for input stream. Usually 
+            n_obs.
+        hidden_dim: `Integer`, The number of units in the RNN
+        output_dim: `Integer`, the number of dimensions for the output stream. Usually 
+            n_muscles.
+        device: Torch device to be used
+    """
+
+    def __init__(
+            self, 
+            input_dim: int, 
+            hidden_dim: int, 
+            output_dim: int, 
+            device
+        ):
         super().__init__()
         self.device = device
         self.hidden_dim = hidden_dim
         self.n_layers = 1
 
-        self.gru = th.nn.GRU(input_dim, hidden_dim, 1, batch_first=True)
-        self.fc = th.nn.Linear(hidden_dim, output_dim)
-        self.sigmoid = th.nn.Sigmoid()
+        self.gru = th.nn.GRU(input_dim, hidden_dim, 1, batch_first=True) # receive observation inputs
+        self.fc = th.nn.Linear(hidden_dim, output_dim) # linear output layer
+        self.sigmoid = th.nn.Sigmoid() # sigmoid nonlinearity to guarantee action output is bounded
 
         # the default initialization in torch isn't ideal
         for name, param in self.named_parameters():
@@ -26,7 +44,7 @@ class PolicyGRU(nn.Module):
             elif name == "fc.weight":
                 th.nn.init.xavier_uniform_(param)
             elif name == "fc.bias":
-                th.nn.init.constant_(param, -5.0)
+                th.nn.init.constant_(param, -5.0) # initial bias is -5 to minimise initial output and increase stability
             else:
                 raise ValueError
 
